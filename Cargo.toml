@@ -1,11 +1,11 @@
 [package]
 name = "hadb-changeset"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Russell Romney <russellromney@gmail.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/russellromney/hadb-changeset"
-description = "Unified replication formats for embedded databases. Physical (.hadbp) changesets with SHA-256 checksum chaining."
+description = "Unified replication formats for embedded databases. Physical (.hadbp) and journal (.hadbj) changesets with SHA-256 checksum chaining."
 keywords = ["replication", "changeset", "s3", "embedded-database", "ha"]
 categories = ["database", "encoding"]
 readme = "README.md"
@@ -13,15 +13,18 @@ readme = "README.md"
 [features]
 default = []
 test-utils = []
+journal = ["zstd"]
 
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
+crc32c = "0.6"
 hadb-io = { path = "../hadb/hadb-io", version = "0.2.0" }
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
+zstd = { version = "0.13", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

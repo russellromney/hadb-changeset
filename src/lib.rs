@@ -1,5 +1,6 @@
 pub mod apply;
 pub mod error;
+pub mod journal;
 pub mod physical;
 pub mod storage;
 
