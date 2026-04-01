@@ -200,7 +200,7 @@ pub fn decode_entry(data: &[u8], offset: usize) -> Result<(JournalEntry, usize),
 // ============================================================================
 
 /// Encode a header to bytes.
-fn encode_header(header: &JournalHeader) -> [u8; HEADER_SIZE] {
+pub fn encode_header(header: &JournalHeader) -> [u8; HEADER_SIZE] {
     let mut buf = [0u8; HEADER_SIZE];
     buf[0..5].copy_from_slice(&HADBJ_MAGIC);
     buf[5] = HADBJ_VERSION;
@@ -219,7 +219,7 @@ fn encode_header(header: &JournalHeader) -> [u8; HEADER_SIZE] {
 }
 
 /// Decode a header from bytes.
-fn decode_header(data: &[u8]) -> Result<JournalHeader, ChangesetError> {
+pub fn decode_header(data: &[u8]) -> Result<JournalHeader, ChangesetError> {
     if data.len() < HEADER_SIZE {
         return Err(ChangesetError::Truncated {
             needed: HEADER_SIZE,
