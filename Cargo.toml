@@ -17,7 +17,7 @@ test-utils = []
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
-hadb-io = "0.2.0"
+hadb-io = { path = "../hadb/hadb-io", version = "0.2.0" }
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
@@ -27,4 +27,4 @@ tracing = "0.1"
 tokio = { version = "1", features = ["full", "test-util"] }
 tempfile = "3"
 rand = "0.8"
-hadb-io = { version = "0.2.0", features = ["s3"] }
+hadb-io = { path = "../hadb/hadb-io", version = "0.2.0", features = ["s3"] }
