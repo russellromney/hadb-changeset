@@ -1,5 +1,5 @@
 use anyhow::Result;
-use hadb_io::ObjectStore;
+use hadb_storage::StorageBackend;
 
 use crate::physical::{self, PhysicalChangeset};
 
@@ -24,7 +24,7 @@ impl ChangesetKind {
     }
 }
 
-/// A discovered changeset from S3 listing.
+/// A discovered changeset from a storage listing.
 #[derive(Debug, Clone)]
 pub struct DiscoveredChangeset {
     pub key: String,
@@ -32,7 +32,7 @@ pub struct DiscoveredChangeset {
     pub kind: ChangesetKind,
 }
 
-/// Format an S3 key for a changeset.
+/// Format a storage key for a changeset.
 ///
 /// Layout: `{prefix}{db_name}/{generation:04x}/{seq:016x}.{ext}`
 pub fn format_key(
@@ -54,40 +54,43 @@ pub fn format_key(
 
 /// Upload a physical changeset as an incremental.
 pub async fn upload_physical(
-    storage: &dyn ObjectStore,
+    storage: &dyn StorageBackend,
     prefix: &str,
     db_name: &str,
     changeset: &PhysicalChangeset,
 ) -> Result<()> {
     let key = format_key(prefix, db_name, GENERATION_INCREMENTAL, changeset.header.seq, ChangesetKind::Physical);
     let data = physical::encode(changeset);
-    storage.upload_bytes(&key, data).await
+    storage.put(&key, &data).await
 }
 
 /// Upload a physical changeset as a snapshot.
 pub async fn upload_physical_snapshot(
-    storage: &dyn ObjectStore,
+    storage: &dyn StorageBackend,
     prefix: &str,
     db_name: &str,
     changeset: &PhysicalChangeset,
 ) -> Result<()> {
     let key = format_key(prefix, db_name, GENERATION_SNAPSHOT, changeset.header.seq, ChangesetKind::Physical);
     let data = physical::encode(changeset);
-    storage.upload_bytes(&key, data).await
+    storage.put(&key, &data).await
 }
 
 /// Download and decode a physical changeset.
-pub async fn download_physical(storage: &dyn ObjectStore, key: &str) -> Result<PhysicalChangeset> {
-    let data = storage.download_bytes(key).await?;
+pub async fn download_physical(storage: &dyn StorageBackend, key: &str) -> Result<PhysicalChangeset> {
+    let data = storage
+        .get(key)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("changeset key {} not found", key))?;
     physical::decode(&data).map_err(|e| anyhow::anyhow!("failed to decode changeset at {}: {}", key, e))
 }
 
 /// Discover incremental changesets after a given sequence number.
 ///
-/// Uses `list_objects_after` to efficiently skip past already-applied changesets.
-/// Returns changesets sorted by seq (ascending).
+/// Uses `list(prefix, Some(after))` to efficiently skip past already-applied
+/// changesets. Returns changesets sorted by seq (ascending).
 pub async fn discover_after(
-    storage: &dyn ObjectStore,
+    storage: &dyn StorageBackend,
     prefix: &str,
     db_name: &str,
     after_seq: u64,
@@ -97,7 +100,9 @@ pub async fn discover_after(
     let incr_prefix = format!("{}{}/{:04x}/", prefix, db_name, GENERATION_INCREMENTAL);
     let start_after_key = format!("{}{:016x}.{}", incr_prefix, after_seq, ext);
 
-    let keys = storage.list_objects_after(&incr_prefix, &start_after_key).await?;
+    let keys = storage
+        .list(&incr_prefix, Some(&start_after_key))
+        .await?;
 
     let mut changesets = Vec::new();
     for key in &keys {
@@ -126,14 +131,14 @@ pub async fn discover_after(
 
 /// Discover the latest snapshot changeset (if any).
 pub async fn discover_latest_snapshot(
-    storage: &dyn ObjectStore,
+    storage: &dyn StorageBackend,
     prefix: &str,
     db_name: &str,
     kind: ChangesetKind,
 ) -> Result<Option<DiscoveredChangeset>> {
     let ext = kind.extension();
     let snap_prefix = format!("{}{}/{:04x}/", prefix, db_name, GENERATION_SNAPSHOT);
-    let keys = storage.list_objects(&snap_prefix).await?;
+    let keys = storage.list(&snap_prefix, None).await?;
 
     let mut latest: Option<DiscoveredChangeset> = None;
     for key in &keys {
@@ -322,12 +327,9 @@ mod tests {
     #[tokio::test]
     async fn test_discover_isolates_kinds() {
         let store = InMemoryObjectStore::new();
-        // Upload a physical changeset
         upload_physical(&store, "test/", "mydb", &make_cs(1, 0)).await.unwrap();
-        // Upload a fake journal key manually
         store.insert("test/mydb/0000/0000000000000001.hadbj", vec![0u8; 10]).await;
 
-        // Physical discover should not see the journal file
         let results = discover_after(&store, "test/", "mydb", 0, ChangesetKind::Physical).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].kind, ChangesetKind::Physical);
